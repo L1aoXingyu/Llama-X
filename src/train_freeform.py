@@ -37,6 +37,20 @@ PROMPT_DICT = {
         "{instruction}\n\n### Response:"
     ),
 }
+CODE_PROMPT_DICT = {
+    "prompt_input": (
+        "Below is an instruction that describes a task, paired with an input that provides further context. "
+        "Write a response that appropriately completes the request.\n\n"
+        "### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:"
+    ),
+    "prompt_no_input": (
+        "Below is an instruction that describes a task. "
+        "Write a response that appropriately completes the request.\n\n"
+        "### Instruction:\n{instruction}\n\n### Response:"
+    ),
+}
+
+
 
 
 @dataclass
@@ -171,7 +185,7 @@ class SupervisedComplexDataset(Dataset):
         list_data_dict = []
 
         with open(data_path) as f:
-            for line in f:    
+            for line in f:
                 cur_obj = json.loads(line)
                 cur_obj = json.loads(cur_obj)
                 list_data_dict.append(cur_obj)
@@ -183,7 +197,7 @@ class SupervisedComplexDataset(Dataset):
         ]
         targets = [f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict]
 
-       
+
         logging.warning("Tokenizing inputs... This may take some time...")
         data_dict = preprocess(sources, targets, tokenizer)
 
@@ -228,7 +242,7 @@ def make_supervised_data_module(tokenizer: transformers.PreTrainedTokenizer, dat
 def train():
     parser = transformers.HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-        
+
     model = transformers.AutoModelForCausalLM.from_pretrained(
         model_args.model_name_or_path,
         cache_dir=training_args.cache_dir,
@@ -239,7 +253,7 @@ def train():
         cache_dir=training_args.cache_dir,
         model_max_length=training_args.model_max_length,
         padding_side="right",
-        use_fast=False,
+        use_fast=True,
     )
     if tokenizer.pad_token is None:
         smart_tokenizer_and_embedding_resize(
@@ -250,9 +264,19 @@ def train():
     if "llama" in model_args.model_name_or_path:
         tokenizer.add_special_tokens(
             {
-                "eos_token": DEFAULT_EOS_TOKEN,
-                "bos_token": DEFAULT_BOS_TOKEN,
-                "unk_token": DEFAULT_UNK_TOKEN,
+                "eos_token": "</s>",
+                "bos_token": "</s>",
+                "unk_token": "</s>",
+            }
+        )
+
+    if "starcoder" in model_args.model_name_or_path:
+        tokenizer.add_special_tokens(
+            {
+                "eos_token": "<|endoftext|>",
+                "bos_token": "<|endoftext|>",
+                "unk_token": "<|endoftext|>",
+                "pad_token": "[PAD]",
             }
         )
 
