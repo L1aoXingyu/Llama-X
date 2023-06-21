@@ -15,7 +15,7 @@ import json
 import copy
 import logging
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Sequence
+from typing import Optional, Dict, Sequence, List
 
 import torch
 import transformers
@@ -37,6 +37,7 @@ PROMPT_DICT = {
         "{instruction}\n\n### Response:"
     ),
 }
+
 CODE_PROMPT_DICT = {
     "prompt_input": (
         "Below is an instruction that describes a task, paired with an input that provides further context. "
@@ -52,7 +53,6 @@ CODE_PROMPT_DICT = {
 
 
 
-
 @dataclass
 class ModelArguments:
     model_name_or_path: Optional[str] = field(default="facebook/opt-125m")
@@ -60,7 +60,7 @@ class ModelArguments:
 
 @dataclass
 class DataArguments:
-    data_path: str = field(default=None, metadata={"help": "Path to the training data."})
+    data_path: List[str] = field(default_factory=list, metadata={"help": "Path to the training data."})
     complex_data: Optional[str] = field(default=None)
 
 
@@ -148,19 +148,33 @@ def preprocess(
 class SupervisedDataset(Dataset):
     """Dataset for supervised fine-tuning."""
 
-    def __init__(self, data_path: str, tokenizer: transformers.PreTrainedTokenizer):
+    def __init__(self, data_path: List[str], tokenizer: transformers.PreTrainedTokenizer):
         super(SupervisedDataset, self).__init__()
         logging.warning("Loading data...")
-        list_data_dict = utils.jload(data_path)
+        if type(data_path) == str:
+            data_path = [data_path]
 
-        logging.warning("Formatting inputs...")
-        prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
-        sources = [
-            prompt_input.format_map(example) if example.get("input", "") != "" else prompt_no_input.format_map(example)
-            for example in list_data_dict
-        ]
-        targets = [f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict]
+        sources = []
+        targets = []
+        for path in data_path:
+            list_data_dict = utils.jload(path)
 
+            if "code" in path:
+                # process code data
+                logging.warning("Formatting code inputs...")
+                prompt_input, prompt_no_input = CODE_PROMPT_DICT["prompt_input"], CODE_PROMPT_DICT["prompt_no_input"]
+
+            else:
+                # process lm data
+                logging.warning("Formatting lm inputs...")
+                prompt_input, prompt_no_input = PROMPT_DICT["prompt_input"], PROMPT_DICT["prompt_no_input"]
+
+            sources.extend([
+                prompt_input.format_map(example) if example.get("input", "") != "" else prompt_no_input.format_map(example)
+                for example in list_data_dict
+            ])
+
+            targets.extend([f"{example['output']}{tokenizer.eos_token}" for example in list_data_dict])
 
         logging.warning("Tokenizing inputs... This may take some time...")
         data_dict = preprocess(sources, targets, tokenizer)
